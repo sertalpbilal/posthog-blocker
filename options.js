@@ -77,11 +77,26 @@ let currentPage = 1;
 const itemsPerPage = 10;
 
 async function getBlocked() {
-  const { blocked } = await chrome.storage.sync.get({ blocked: [] });
-  return blocked;
+  try {
+    const { blocked } = await chrome.storage.sync.get({ blocked: [] });
+    return blocked || [];
+  } catch (err) {
+    console.error("Failed to read blocked list:", err);
+    return [];
+  }
 }
 async function setBlocked(list) {
-  await chrome.storage.sync.set({ blocked: list });
+  try {
+    await chrome.storage.sync.set({ blocked: list });
+  } catch (err) {
+    console.error("Failed to save blocked list:", err);
+  }
+}
+
+function isValidDomain(domain) {
+  if (!domain || domain.length > 253) return false;
+  const domainRegex = /^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)*[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$/;
+  return domainRegex.test(domain);
 }
 
 // ------------------------------
@@ -90,9 +105,13 @@ async function setBlocked(list) {
 async function addDomain() {
   const dom = domainInput.value.trim();
   if (!dom) return;
+  if (!isValidDomain(dom)) {
+    await showModal({ message: "Please enter a valid domain name (e.g. example.com)." });
+    return;
+  }
   const list = await getBlocked();
   if (list.includes(dom)) {
-    alert("Already blocked.");
+    await showModal({ message: "This domain is already blocked." });
   } else {
     list.push(dom);
     await setBlocked(list);
@@ -146,8 +165,12 @@ async function render() {
       });
       if (!nd || nd === domain) return;
       const lst = await getBlocked();
+      if (!isValidDomain(nd)) {
+        await showModal({ message: "Please enter a valid domain name (e.g. example.com)." });
+        return;
+      }
       if (lst.includes(nd)) {
-        alert("Already in list.");
+        await showModal({ message: "This domain is already in the list." });
         return;
       }
       lst[lst.indexOf(domain)] = nd;
@@ -215,9 +238,15 @@ nextPageBtn.addEventListener("click", () => {
 });
 
 // Dark mode toggle
+function setSVGContent(element, svgString) {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(svgString, "image/svg+xml");
+  element.replaceChildren(doc.documentElement);
+}
+
 function setDark(on) {
   document.body.classList.toggle("dark", on);
-  darkModeBtn.innerHTML = on ? darkModeSVG : lightModeSVG;
+  setSVGContent(darkModeBtn, on ? darkModeSVG : lightModeSVG);
   chrome.storage.sync.set({ dark: on });
 }
 darkModeBtn.addEventListener("click", () =>
